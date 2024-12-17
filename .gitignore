@@ -1,4 +1,5 @@
 papers/
 __pycache__/
+*.egg-info
 .hypothesis
 
