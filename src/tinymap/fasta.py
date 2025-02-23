@@ -111,9 +111,11 @@ def index_fasta_files(index_file: Path, *files: Path):
 @dataclass
 class FastaIndex: 
 
+    path: Path
     offsets: Dict[str, List[Tuple[Path, int]]] = field(repr=False)
 
     def load_seq(self, name: str) -> str: 
+        dir = self.path.parent
         logger = logging.getLogger("FastaIndex")
         logger.info(f"load_seq({name}) = {self.offsets.get(name, [])}")
         name_seq_tuple: List[Tuple[str, str]] = [
@@ -126,13 +128,14 @@ class FastaIndex:
 def load_fasta_index(index_file: Path) -> FastaIndex:
     logger = logging.getLogger("fasta.py") 
     logger.info(f"Loading FASTA index from {index_file.name}")
+    dir = index_file.parent
     with index_file.open('rt') as inf: 
         reader = csv.reader(inf, dialect=csv.excel_tab) 
         _ = next(reader) # header
         triples = list(reader) 
         seqs = groupby(triples, lambda t: t[1]) 
-        return FastaIndex(offsets={
-            seq_name: [(Path(filename), int(offset)) for (filename, _, offset) in triples]
+        return FastaIndex(path=index_file, offsets={
+            seq_name: [(dir / filename, int(offset)) for (filename, _, offset) in triples]
             for (seq_name, triples) in seqs
         })
 

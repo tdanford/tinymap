@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, List, Tuple, Generator, Dict
 from pathlib import Path
 
-from .fasta import kmers, open_with_gz
+from .fasta import kmers, open_with_gz, revcomp_kmers
 from .chains import Anchor, Chain
 
 
@@ -48,25 +48,28 @@ def minimizers(w: int, k: int, itrkmers: Iterable[kmers]) -> Generator[Tuple[str
                 yield (kmer, window_offset + w - 1)
             window_offset += 1
 
-def create_seeds_df(w: int, k: int, seq: str) -> pd.DataFrame: 
-    seed_dict = { 'kmer': [], 'offset': [] }
-    for (kmer, offset) in minimizers(w, k, kmers(k, seq)): 
-        seed_dict['kmer'].append(kmer) 
-        seed_dict['offset'].append(offset) 
-    return pd.DataFrame.from_dict(seed_dict)
-
-def create_seeds(w: int, k: int, seq: str) -> Dict[str, List[int]]: 
+def create_seeds_df(w: int, k: int, seq_name: str, seq: str, reverse_seeds: bool = True) -> pd.DataFrame: 
     """Creates a dictionary whose keys are the minimizers of a sequence 'seq', and whose values 
     are a list of all the offsets in the 'seq' string where that key was found to be a minimizer.
     """
-    seeds: Dict[str, List[int]] = {} 
-    for (k, i) in minimizers(w, k, seq): 
-        if k in seeds: 
-            seeds[k].append(i) 
-        else: 
-            seeds[k] = [i] 
-    return seeds
+    N = len(seq) 
 
+    forward_dict = { 'kmer': [], 'offset': [] }
+    for (kmer, offset) in minimizers(w, k, kmers(k, seq)): 
+        forward_dict['kmer'].append(kmer) 
+        forward_dict['offset'].append(offset) 
+    forward_df = pd.DataFrame.from_dict(forward_dict)
+    
+    if reverse_seeds: 
+        rev_dict = { 'kmer': [], 'offset': [] }
+        for (kmer, offset) in minimizers(w, k, revcomp_kmers(k, seq)): 
+            rev_dict['kmer'].append(kmer) 
+            rev_dict['offset'].append(-N+offset) 
+        rev_df = pd.DataFrame.from_dict(rev_dict)
+        forward_df = pd.concat([forward_df, rev_df])
+
+    forward_df['seq_name'] = seq_name
+    return forward_df
 
 def binary_search(offsets: List[int], value: int) -> Tuple[int, int]: 
     if len(offsets) == 0: return (0, 0)

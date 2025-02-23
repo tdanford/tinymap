@@ -5,14 +5,14 @@ import logging
 import pandas as pd 
 
 from dataclasses import dataclass, field 
-from typing import Generator, List, Dict, Tuple, Iterable
+from typing import Generator, List, Dict, Tuple, Iterable, Callable
 from pathlib import Path
 from rich.progress import track
 from itertools import groupby 
 
 from .fasta import FastaIndex, load_fasta_index, read_fasta, read_fastq, find_read_files, find_ref_files, kmers, Read
 from .chains import Anchor, Chain, Chainer, ChainParams, Region
-from .seeds import create_seeds, create_seeds_df, minimizers
+from .seeds import create_seeds_df, minimizers
 from .swalign import Aligner, AlignmentParams
 
 @dataclass 
@@ -112,14 +112,16 @@ class TinymapIndex:
     seq_indices: Dict[str, 'TinymapSeqIndex']
     logger: logging.Logger 
     fasta_index: FastaIndex
+    data_dir: Path
 
     def __init__(self, w: int, k: int, ref_seqs: Iterable[str]): 
+        self.data_dir = Path('data')
         self.logger = logging.getLogger("TinymapIndex")
         self.w = w 
         self.k = k 
         self.logger.info(f"TinymapIndex({w=}, {k=}, {ref_seqs=})")
         self.seq_indices = {}
-        self.fasta_index = load_fasta_index(Path("index.csv"))
+        self.fasta_index = load_fasta_index(self.data_dir / "index.csv")
         for name in ref_seqs: 
             self.add_seq(name)
     
@@ -128,10 +130,10 @@ class TinymapIndex:
             seq = self.fasta_index.load_seq(seq_name)
             self.index_seq(seq_name, seq)
             self.logger.info(f"Saving {seq_name}")
-            self.seq_indices[seq_name].save()
+            self.seq_indices[seq_name].save(self.data_dir)
 
     def load_seq(self, seq_name: str) -> bool: 
-        p = Path(f"index_{seq_name}.json.gz")
+        p = self.data_dir / f"index_{seq_name}.json"
         if p.exists(): 
             self.logger.info(f"Loading {seq_name} from {p.name}")
             self.seq_indices[seq_name] = TinymapSeqIndex.load(p) 
@@ -143,12 +145,18 @@ class TinymapIndex:
     def save(self): 
         for (seq_name, idx) in self.seq_indices.items(): 
             self.logger.info(f"Saving {seq_name}")
-            idx.save()
+            idx.save(self.data_dir)
     
     def index_seq(self, seq_name: str, seq: str): 
         self.logger.info(f"Indexing {seq_name[0:100]}")
         self.seq_indices[seq_name] = ( 
-            TinymapSeqIndex(w=self.w, k=self.k, seq_name=seq_name, seq=seq, seeds=create_seeds_df(self.w, self.k, seq))
+            TinymapSeqIndex(
+                w=self.w, 
+                k=self.k, 
+                seq_name=seq_name, 
+                seq=seq, 
+                seeds=create_seeds_df(self.w, self.k, seq_name, seq)
+            )
         )
     
     def align_next(self, reads: Generator[Read, None, None]) -> Tuple[Read, List[Alignment]]: 
@@ -217,6 +225,7 @@ class TinymapSeqIndex:
 
     @staticmethod 
     def load(p: Path) -> 'TinymapSeqIndex': 
+        dir = p.parent
         logger = logging.getLogger("TinymapSeqIndex")
         with p.open('rt') as inf: 
             d = json.loads(inf.read().encode('UTF-8'))
@@ -226,9 +235,9 @@ class TinymapSeqIndex:
             seq_name = d.get('seq_name') 
             seq_path = d.get('seq') 
             seed_path = d.get('seeds')
-        seed_df = pd.read_parquet(Path(seed_path)) 
+        seed_df = pd.read_parquet(dir / seed_path)
         logger.info(f"Seed count: {len(seed_df)}")
-        seqs = read_fasta(Path(seq_path))
+        seqs = read_fasta(dir / seq_path)
         seq = seqs[seq_name]
         logger.info(f"Sequence length: {len(seq)}")
         return TinymapSeqIndex(
@@ -242,8 +251,8 @@ class TinymapSeqIndex:
     seeds: pd.DataFrame = field(repr=False, compare=False, hash=False)
     search_width: int = field(default=1000)
 
-    def save(self): 
-        p = Path(f'index_{self.seq_name}.json')
+    def save(self, dir: Path): 
+        p = dir / f'index_{self.seq_name}.json'
         seed_path = p.with_suffix('.parquet') 
         fasta_path = p.with_suffix('.fasta.gz')
         with gzip.open(p, 'wt') as gout: 
@@ -263,7 +272,12 @@ class TinymapSeqIndex:
     def align(self, read: Read) -> List[Alignment]: 
         chains = self.align_to_seeds(read.seq) 
         return [
-            Alignment(read_name=read.name, read_seq=read.seq, ref_name=self.seq_name, chain=chain) 
+            Alignment(
+                read_name=read.name, 
+                read_seq=read.seq, 
+                ref_name=self.seq_name, 
+                chain=chain
+            )
             for chain in chains
             if chain.score > 0.0
         ]
@@ -271,30 +285,25 @@ class TinymapSeqIndex:
     def align_to_seeds(self, read: str) -> List[Chain]: 
         logger = logging.getLogger(f"TinymapIndex_{self.seq_name}")
         logger.log(logging.DEBUG, f"align_to_seeds({read=})")
-        read_minimizers: List[Tuple[str, int]] = ( 
-            list(minimizers(self.w, self.k, read))
-        )
-        min_strs: List[str] = [x[0] for x in read_minimizers]
-        hit_df = self.seeds[self.seeds['kmer'].isin(min_strs)]
 
-        hit_kmers = hit_df['kmer'].to_list()
-        hit_offsets = hit_df['offset'].to_list()
-        kmer_lists = { k: [x[1] for x in v] for (k, v) in groupby(zip(hit_kmers, hit_offsets), key=lambda x: x[0]) }
-        logger.log(logging.DEBUG, f"{kmer_lists=}")
-        hits: List[Anchor] = [
-            Anchor(read_offset=read_offset, reference_offset=ref_offset, k=self.k) 
-            for (kmer, read_offset) in read_minimizers
-            for ref_offset in kmer_lists.get(kmer, [])
-        ]
+        read_df: pd.DataFrame = create_seeds_df(self.w, self.k, "read", read, reverse_seeds=False)
+        hit_df: pd.DataFrame = self.seeds.merge(read_df, on="kmer", suffixes=['_ref', '_read'])
+        anchor_df: pd.DataFrame = hit_df.apply(make_make_anchor(self.k), axis=1)
         logger.log(logging.DEBUG, f"# hits: {len(hits)}")
+        anchor_df.sort_values()
+        hits = anchor_df.tolist()
 
-        hits.sort()
         params = ChainParams(w = self.w, max_distance=self.search_width)
         self.chainer = Chainer(params, hits)
         self.chainer.chain_align()
         return self.chainer.chains
 
-def index_seq(w: int, k: int, name: str, seq: str) -> TinymapIndex:
-    tt = TinymapIndex(w, k, name, seq, create_seeds_df(w, k, seq)) 
-    return tt
+def make_make_anchor(k: int) -> Callable[[Dict], Anchor]:
+    def maker(row) -> Anchor: 
+        return Anchor(
+            read_offset=row["offset_read"],
+            reference_offset=row["offset_ref"],
+            k=k
+        )
+    return maker
 
