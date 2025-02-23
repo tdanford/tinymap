@@ -1,2 +1,5 @@
 *.gz 
 *.fa*
+*.parquet
+*.json 
+index.csv
