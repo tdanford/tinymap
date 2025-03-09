@@ -100,3 +100,44 @@ def test_add_deterministic_strings():
     assert not bf.contains_string(s1 + s2)
     assert not bf.contains_string(s2 + s3)
     assert not bf.contains_string(s3 + s4)
+
+
+def test_union():
+
+    n = 100
+    k = 3
+    seeds = [b"001", b"010", b"100"]
+
+    s1 = "abcdefg"
+    s2 = "tuvwxyz"
+    s3 = "abcdef"
+    s4 = "bcdefg"
+
+    b1 = BloomFilter(n, k, seeds)
+    b2 = BloomFilter(n, k, seeds)
+
+    b1.add_string(s1)
+    b1.add_string(s2)
+    b2.add_string(s3)
+    b2.add_string(s4)
+
+    assert b1.contains_string(s1)
+    assert b1.contains_string(s2)
+    assert not b1.contains_string(s3)
+    assert not b1.contains_string(s4)
+
+    assert int(b1.estimate_size()) == 2
+
+    assert not b2.contains_string(s1)
+    assert not b2.contains_string(s2)
+    assert b2.contains_string(s3)
+    assert b2.contains_string(s4)
+
+    assert int(b2.estimate_size()) == 2
+
+    b3 = b1.union(b2)
+    assert b3.contains_string(s1)
+    assert b3.contains_string(s2)
+    assert b3.contains_string(s3)
+    assert b3.contains_string(s4)
+    assert int(b3.estimate_size()) == 4

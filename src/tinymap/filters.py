@@ -1,5 +1,6 @@
 import hashlib
 import random
+import math
 from typing import List, Optional
 from bitarray import bitarray
 
@@ -44,6 +45,9 @@ class HashingProber:
         idx = int.from_bytes(f.hash(bs)) % self.n
         return idx
 
+    def is_compatible(self, prober: "HashingProber") -> bool:
+        return self.k == prober.k and self.n == prober.n and self.seeds == prober.seeds
+
 
 class CountingFilter(HashingProber):
 
@@ -54,6 +58,13 @@ class CountingFilter(HashingProber):
     ):
         HashingProber.__init__(self, n, k, seeds)
         self.array = array or [0 for i in range(n)]
+
+    def __add__(self, other: "CountingFilter") -> "CountingFilter":
+        if not self.is_compatible(other):
+            raise ValueError(f"Can't add non-compatible filters")
+
+        sums = [self.array[i] + other.array[i] for i in range(self.n)]
+        return CountingFilter(self.n, self.k, self.seeds, sums)
 
     def add_string(self, s: str):
         self.add_bytes(s.encode("utf-8"))
@@ -80,6 +91,22 @@ class BloomFilter(HashingProber):
     ):
         HashingProber.__init__(self, n, k, seeds)
         self.array = array or bitarray(n)
+
+    def add_filter(self, other: "BloomFilter"):
+        if not self.is_compatible(other):
+            raise ValueError("Cannot union two non-compatible filters")
+        self.array = self.array | other.array
+
+    def union(self, other: "BloomFilter") -> "BloomFilter":
+        if not self.is_compatible(other):
+            raise ValueError("Cannot union two non-compatible filters")
+        new_array = self.array | other.array
+        return BloomFilter(self.n, self.k, self.seeds, new_array)
+
+    def estimate_size(self) -> float:
+        f1 = self.n / self.k
+        f2 = self.array.count(1) / self.n
+        return -f1 * math.log(1.0 - f2)
 
     def add_string(self, s: str):
         self.add_bytes(s.encode("utf-8"))
