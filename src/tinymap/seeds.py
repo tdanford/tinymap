@@ -32,6 +32,8 @@ def minimizers(
     This method generates a tuples, (s, i) where each s is a minimizer, and i is the offset of the start
     of the minimizer s in the 'seq' string argument.
     """
+    if isinstance(itrkmers, str):
+        raise ValueError(f"minimizers cannot create kmers by itself")
     window_offset = 0
     min_kmer = 0
     window = []

@@ -5,5 +5,6 @@ def test_minimizers():
     seq = "GTCATGC"
     w = 3
     k = 4
-    mins = list(minimizers(w, k, seq))
+    kitr = kmers(k, seq)
+    mins = list(minimizers(w, k, kitr))
     assert mins == [("CATG", 2), ("ATGC", 3)]
