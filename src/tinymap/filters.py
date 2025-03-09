@@ -1,7 +1,7 @@
 import hashlib
 import random
 import math
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from bitarray import bitarray
 
 
@@ -19,8 +19,26 @@ class SaltedHashFunction:
         return m.digest()
 
 
+def find_optimal_k(nbits: int, nelmts: int) -> int:
+    f = nbits / nelmts
+    return math.ceil(f * math.log(2.0))
+
+
+def find_optimal_bits(nelmts: int, err: float) -> int:
+    l2 = math.log(2.0)
+    p = nelmts * math.log(err)
+    return math.ceil(-p / (l2 * l2))
+
+
+def optimal_filter_args(nelmts: int, err: float) -> Tuple[int, int, List[bytes]]:
+    n = find_optimal_bits(nelmts, err)
+    k = find_optimal_k(n, nelmts)
+    seeds = random_seeds(k)
+    return (n, k, seeds)
+
+
 def random_seed(nbytes: int = 8) -> bytes:
-    random.randbytes(nbytes)
+    return random.randbytes(nbytes)
 
 
 def random_seeds(k: int, nbytes: int = 8) -> List[bytes]:
