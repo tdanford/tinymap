@@ -1,9 +1,9 @@
+from tinymap.seeds import *
 
-from tinymap.seeds import * 
 
-def test_minimizers(): 
-    seq = "GTCATGC" 
-    w = 3 
-    k = 4 
+def test_minimizers():
+    seq = "GTCATGC"
+    w = 3
+    k = 4
     mins = list(minimizers(w, k, seq))
-    assert mins == [('CATG', 2), ('ATGC', 3)]
+    assert mins == [("CATG", 2), ("ATGC", 3)]
