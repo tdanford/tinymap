@@ -1,8 +1,9 @@
 import hashlib
 import random
 import math
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from bitarray import bitarray
+import zlib
 
 
 class SaltedHashFunction:
@@ -66,6 +67,9 @@ class HashingProber:
     def is_compatible(self, prober: "HashingProber") -> bool:
         return self.k == prober.k and self.n == prober.n and self.seeds == prober.seeds
 
+    def tojson(self) -> Dict:
+        return {"n": self.n, "k": self.k, "seeds": [b.hex() for b in self.seeds]}
+
 
 class CountingFilter(HashingProber):
 
@@ -102,6 +106,15 @@ class CountingFilter(HashingProber):
 
 class BloomFilter(HashingProber):
 
+    @staticmethod
+    def load(d: Dict) -> "BloomFilter":
+        n = d.get("n")
+        k = d.get("k")
+        seeds = [bytes.fromhex(h) for h in d.get("seeds")]
+        array_compressed_hex = d.get("array")
+        array = bitarray.frombytes(zlib.decompress(bytes.fromhex(array_compressed_hex)))
+        return BloomFilter(n, k, seeds, array)
+
     array: bitarray
 
     def __init__(
@@ -109,6 +122,11 @@ class BloomFilter(HashingProber):
     ):
         HashingProber.__init__(self, n, k, seeds)
         self.array = array or bitarray(n)
+
+    def tojson(self) -> Dict:
+        d = super().tojson()
+        d["array"] = zlib.compress(self.array.tobytes()).hex()
+        return d
 
     def add_filter(self, other: "BloomFilter"):
         if not self.is_compatible(other):
