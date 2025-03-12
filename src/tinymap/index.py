@@ -267,6 +267,7 @@ class TinymapSeqIndex:
             seq_path = d.get("seq")
             seed_path = d.get("seeds")
         seed_df = pd.read_parquet(dir / seed_path)
+        seed_df.set_index(['kmer'], inplace=True)
         logger.info(f"Seed count: {len(seed_df)}")
         seqs = read_fasta(dir / seq_path)
         seq = seqs[seq_name]
@@ -314,26 +315,45 @@ class TinymapSeqIndex:
             for chain in chains
             if chain.score > 0.0
         ]
+    
+    def create_read_seeds_df(self, read: str) -> pd.DataFrame: 
+        read_df: pd.DataFrame = create_seeds_df(
+            self.w, self.k, "read", read, reverse_seeds=False
+        ).set_index(['kmer'])
+        return read_df
+    
+    def merge_to_hit_df(self, read_df: pd.DataFrame) -> pd.DataFrame: 
+        hit_df: pd.DataFrame = self.seeds.merge(
+            read_df, on="kmer", suffixes=["_ref", "_read"]
+        )
+        return hit_df
+    
+    def create_anchors(self, hit_df: pd.DataFrame) -> List[Anchor]: 
+        hits: List[Anchor] = hit_df.apply(make_make_anchor(self.k), axis=1).tolist()
+        hits.sort(key=lambda a: a.reference_offset)
+        return hits
+    
+    def chain_anchors(self, hits: List[Anchor]) -> List[Chain]: 
+        params = ChainParams(w=self.w, max_distance=self.search_width)
+        self.chainer = Chainer(params, hits)
+        self.chainer.chain_align()
+        return self.chainer.chains
 
     def align_to_seeds(self, read: str) -> List[Chain]:
         logger = logging.getLogger(f"TinymapIndex_{self.seq_name}")
         logger.log(logging.DEBUG, f"align_to_seeds({read=})")
 
-        read_df: pd.DataFrame = create_seeds_df(
-            self.w, self.k, "read", read, reverse_seeds=False
-        )
-        hit_df: pd.DataFrame = self.seeds.merge(
-            read_df, on="kmer", suffixes=["_ref", "_read"]
-        )
-        anchor_df: pd.DataFrame = hit_df.apply(make_make_anchor(self.k), axis=1)
-        logger.log(logging.DEBUG, f"# hits: {len(hits)}")
-        anchor_df.sort_values()
-        hits = anchor_df.tolist()
+        read_df = self.create_read_seeds_df(read)
+        logger.log(logging.DEBUG, f"read_seeds_df len={len(read_df)}")
 
-        params = ChainParams(w=self.w, max_distance=self.search_width)
-        self.chainer = Chainer(params, hits)
-        self.chainer.chain_align()
-        return self.chainer.chains
+        hit_df = self.merge_to_hit_df(read_df)
+        logger.log(logging.DEBUG, f"hit_df len={len(hit_df)}")
+
+        hits = self.create_anchors(hit_df)
+        logger.log(logging.DEBUG, f"# hits: {len(hits)}")
+
+        chains = self.chain_anchors(hits)
+        return chains
 
 
 def make_make_anchor(k: int) -> Callable[[Dict], Anchor]:
