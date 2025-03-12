@@ -2,4 +2,5 @@
 *.fa*
 *.parquet
 *.json 
+*.bloom
 index.csv
