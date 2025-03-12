@@ -257,7 +257,8 @@ class TinymapSeqIndex:
     def load(p: Path) -> "TinymapSeqIndex":
         dir = p.parent
         logger = logging.getLogger("TinymapSeqIndex")
-        with p.open("rt") as inf:
+        with gzip.open(p.as_posix(), 'rt') as inf: 
+            #with p.open("rt") as inf:
             d = json.loads(inf.read().encode("UTF-8"))
             logger.info(f"Loaded index manifest {d}")
             w = d.get("w")
