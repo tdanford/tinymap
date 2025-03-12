@@ -257,8 +257,8 @@ class TinymapSeqIndex:
     def load(p: Path) -> "TinymapSeqIndex":
         dir = p.parent
         logger = logging.getLogger("TinymapSeqIndex")
-        with gzip.open(p.as_posix(), 'rt') as inf: 
-            #with p.open("rt") as inf:
+        with gzip.open(p.as_posix(), "rt") as inf:
+            # with p.open("rt") as inf:
             d = json.loads(inf.read().encode("UTF-8"))
             logger.info(f"Loaded index manifest {d}")
             w = d.get("w")
@@ -267,7 +267,7 @@ class TinymapSeqIndex:
             seq_path = d.get("seq")
             seed_path = d.get("seeds")
         seed_df = pd.read_parquet(dir / seed_path)
-        seed_df.set_index(['kmer'], inplace=True)
+        seed_df.set_index(["kmer"], inplace=True)
         logger.info(f"Seed count: {len(seed_df)}")
         seqs = read_fasta(dir / seq_path)
         seq = seqs[seq_name]
@@ -315,25 +315,25 @@ class TinymapSeqIndex:
             for chain in chains
             if chain.score > 0.0
         ]
-    
-    def create_read_seeds_df(self, read: str) -> pd.DataFrame: 
+
+    def create_read_seeds_df(self, read: str) -> pd.DataFrame:
         read_df: pd.DataFrame = create_seeds_df(
             self.w, self.k, "read", read, reverse_seeds=False
-        ).set_index(['kmer'])
+        ).set_index(["kmer"])
         return read_df
-    
-    def merge_to_hit_df(self, read_df: pd.DataFrame) -> pd.DataFrame: 
+
+    def merge_to_hit_df(self, read_df: pd.DataFrame) -> pd.DataFrame:
         hit_df: pd.DataFrame = self.seeds.merge(
             read_df, on="kmer", suffixes=["_ref", "_read"]
         )
         return hit_df
-    
-    def create_anchors(self, hit_df: pd.DataFrame) -> List[Anchor]: 
+
+    def create_anchors(self, hit_df: pd.DataFrame) -> List[Anchor]:
         hits: List[Anchor] = hit_df.apply(make_make_anchor(self.k), axis=1).tolist()
         hits.sort(key=lambda a: a.reference_offset)
         return hits
-    
-    def chain_anchors(self, hits: List[Anchor]) -> List[Chain]: 
+
+    def chain_anchors(self, hits: List[Anchor]) -> List[Chain]:
         params = ChainParams(w=self.w, max_distance=self.search_width)
         self.chainer = Chainer(params, hits)
         self.chainer.chain_align()
