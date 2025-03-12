@@ -112,7 +112,8 @@ class BloomFilter(HashingProber):
         k = d.get("k")
         seeds = [bytes.fromhex(h) for h in d.get("seeds")]
         array_compressed_hex = d.get("array")
-        array = bitarray.frombytes(zlib.decompress(bytes.fromhex(array_compressed_hex)))
+        array = bitarray()
+        array.frombytes(zlib.decompress(bytes.fromhex(array_compressed_hex)))
         return BloomFilter(n, k, seeds, array)
 
     array: bitarray
