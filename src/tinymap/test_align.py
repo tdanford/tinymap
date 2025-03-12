@@ -19,7 +19,11 @@ k = 17
 
 
 def load_index():
-    idx = TinymapIndex(w, k, ["chr1", "chr2", "chr3", "chr10"])
-    fqs = list(find_read_files(Path.cwd()))
-    reads = read_fastq(fqs[0])
+    idx = TinymapIndex(w, k, ["chr1"])
+    dir = Path.cwd() / 'data'
+    fqs = list(find_read_files(dir))
+    if len(fqs) != 0: 
+        reads = read_fastq(fqs[0])
+    else: 
+        reads = []
     return (idx, reads)
